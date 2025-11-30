@@ -1,0 +1,69 @@
+#!/bin/bash
+# planner.sh - Simple Study Planner with Reminder
+# Location: ~/study_planner/scripts/planner.sh
+
+BASE="$HOME/study_planner"
+TASKS="$BASE/tasks.csv"
+LOGDIR="$BASE/logs"
+mkdir -p "$BASE" "$LOGDIR"
+
+# Ensure header exists
+if [ ! -f "$TASKS" ]; then
+  echo "id,title,subject,due_date,priority,est_time,status" > "$TASKS"
+fi
+
+function add_task() {
+  id=$(($(tail -n +2 "$TASKS" | wc -l) + 1))
+  read -p "Title: " title
+  read -p "Subject: " subject
+  read -p "Due date (YYYY-MM-DD): " due
+  read -p "Priority (High/Medium/Low): " pr
+  read -p "Est. time (mins): " et
+  echo "${id},${title},${subject},${due},${pr},${et},pending" >> "$TASKS"
+  echo "Task added."
+}
+
+function list_tasks() {
+  column -s, -t "$TASKS" | sed '1!b;:a;n;ba'  # pretty print (header included)
+  echo "----"
+  tail -n +2 "$TASKS" | nl -w2 -s'. '
+}
+
+function remind() {
+  N=2   # default remind window in days
+  if [ ! -z "$2" ]; then
+    N="$2"
+  fi
+  echo "Reminders for next $N day(s):"
+  today=$(date +%F)
+  limit=$(date -d "+$N day" +%F)
+  tail -n +2 "$TASKS" | while IFS=, read -r id title subject due pr et status; do
+    if [ "$status" != "complete" ]; then
+      if [[ "$due" < "$limit" || "$due" == "$limit" ]]; then
+        echo "ID:$id | $title | $subject | Due:$due | Priority:$pr"
+      fi
+    fi
+  done
+}
+
+function mark_complete() {
+  read -p "Enter task ID to mark complete: " tid
+  tmp=$(mktemp)
+  awk -F, -v id="$tid" 'BEGIN{OFS=","} NR==1{print $0; next} $1==id{$7="complete"} {print $0}' "$TASKS" > "$tmp" && mv "$tmp" "$TASKS"
+  echo "Task $tid marked complete."
+}
+
+case "$1" in
+  --add) add_task ;;
+  --list) list_tasks ;;
+  --remind) remind "$@" ;;
+  --complete) mark_complete ;;
+  *) 
+    echo "Usage: $0 --add|--list|--remind [N]|--complete"
+    echo "Examples:"
+    echo "  $0 --add"
+    echo "  $0 --list"
+    echo "  $0 --remind 3   # show tasks due in next 3 days"
+    exit 1
+    ;;
+esac
